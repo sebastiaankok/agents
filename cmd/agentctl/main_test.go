@@ -9,18 +9,43 @@ import (
 )
 
 func TestRunCommand_JobImageFlag(t *testing.T) {
-	var capturedImage string
+	var capturedCfg jobspec.Config
 	cmd := newRunCmd(func(cfg jobspec.Config) {
-		capturedImage = cfg.JobImage
+		capturedCfg = cfg
 	})
-	cmd.SetArgs([]string{"--job-image", "custom:v2"})
+	cmd.SetArgs([]string{"--job-image", "custom:v2", "--dry-run"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if capturedImage != "custom:v2" {
-		t.Errorf("Image = %q, want %q", capturedImage, "custom:v2")
+	if capturedCfg.JobImage != "custom:v2" {
+		t.Errorf("JobImage = %q, want %q", capturedCfg.JobImage, "custom:v2")
+	}
+}
+
+func TestRunCommand_Flags(t *testing.T) {
+	var capturedCfg jobspec.Config
+	cmd := newRunCmd(func(cfg jobspec.Config) {
+		capturedCfg = cfg
+	})
+	cmd.SetArgs([]string{
+		"--job-image", "custom:v2",
+		"--issue", "42",
+		"--namespace", "test-ns",
+		"--max-parallel", "5",
+		"--dry-run",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if capturedCfg.JobImage != "custom:v2" {
+		t.Errorf("JobImage = %q, want %q", capturedCfg.JobImage, "custom:v2")
+	}
+	if capturedCfg.Namespace != "test-ns" {
+		t.Errorf("Namespace = %q, want %q", capturedCfg.Namespace, "test-ns")
 	}
 }
 

@@ -14,6 +14,7 @@ func newRootCmd() *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	root.AddCommand(newInstallCmd())
 	root.AddCommand(newRunCmd(nil))
 	return root
 }
