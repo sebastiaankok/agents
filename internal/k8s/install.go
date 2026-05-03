@@ -123,7 +123,13 @@ func (i *Installer) applyDeployment(ctx context.Context) error {
 				Spec: corev1.PodSpec{
 					ServiceAccountName: controllerName,
 					Containers: []corev1.Container{
-						{Name: "controller", Image: controllerImage},
+						{
+							Name:  "controller",
+							Image: controllerImage,
+							Env: []corev1.EnvVar{
+								{Name: "RECONCILE_INTERVAL", Value: "30s"},
+							},
+						},
 					},
 				},
 			},

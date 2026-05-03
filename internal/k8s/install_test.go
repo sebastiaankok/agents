@@ -118,6 +118,49 @@ func TestInstall_CreatesDeployment(t *testing.T) {
 	}
 }
 
+func TestInstall_DeploymentEnvVars(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	installer := k8sinternal.NewInstaller(client, "agent-runners")
+
+	if err := installer.Install(context.Background()); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("agent-runners").Get(context.Background(), "agentctl-controller", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("deployment not created: %v", err)
+	}
+	containers := dep.Spec.Template.Spec.Containers
+	if len(containers) == 0 {
+		t.Fatal("deployment has no containers")
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range containers[0].Env {
+		envMap[e.Name] = e.Value
+	}
+	if envMap["RECONCILE_INTERVAL"] != "30s" {
+		t.Errorf("RECONCILE_INTERVAL = %q, want %q", envMap["RECONCILE_INTERVAL"], "30s")
+	}
+}
+
+func TestInstall_DeploymentServiceAccount(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	installer := k8sinternal.NewInstaller(client, "agent-runners")
+
+	if err := installer.Install(context.Background()); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("agent-runners").Get(context.Background(), "agentctl-controller", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("deployment not created: %v", err)
+	}
+	if dep.Spec.Template.Spec.ServiceAccountName != "agentctl-controller" {
+		t.Errorf("serviceAccountName = %q, want %q", dep.Spec.Template.Spec.ServiceAccountName, "agentctl-controller")
+	}
+}
+
 func TestInstall_Idempotent(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")

@@ -11,7 +11,7 @@ import (
 func TestRunCommand_JobImageFlag(t *testing.T) {
 	var capturedImage string
 	cmd := newRunCmd(func(cfg jobspec.Config) {
-		capturedImage = cfg.Image
+		capturedImage = cfg.JobImage
 	})
 	cmd.SetArgs([]string{"--job-image", "custom:v2"})
 

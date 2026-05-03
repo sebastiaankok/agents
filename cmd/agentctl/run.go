@@ -19,7 +19,7 @@ func newRunCmd(onConfig func(jobspec.Config)) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&cfg.Image, "job-image", "", "override the default runner image")
+	cmd.Flags().StringVar(&cfg.JobImage, "job-image", "", "override the default runner image")
 
 	return cmd
 }
