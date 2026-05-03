@@ -7,13 +7,15 @@ import (
 )
 
 func newRootCmd() *cobra.Command {
-	return &cobra.Command{
+	root := &cobra.Command{
 		Use:   "agentctl",
 		Short: "Dispatch opencode agent jobs to work on GitHub Issues",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
+	root.AddCommand(newInstallCmd())
+	return root
 }
 
 func main() {
