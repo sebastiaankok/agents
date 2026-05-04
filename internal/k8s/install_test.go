@@ -10,11 +10,13 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
+const testRepo = "owner/repo"
+
 func TestInstall_CreatesNamespace(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -31,7 +33,7 @@ func TestInstall_CreatesServiceAccount(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -48,7 +50,7 @@ func TestInstall_CreatesClusterRole(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -80,7 +82,7 @@ func TestInstall_CreatesClusterRoleBinding(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -100,7 +102,7 @@ func TestInstall_CreatesDeployment(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -122,7 +124,7 @@ func TestInstall_DeploymentEnvVars(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -135,20 +137,56 @@ func TestInstall_DeploymentEnvVars(t *testing.T) {
 		t.Fatal("deployment has no containers")
 	}
 
-	envMap := make(map[string]string)
+	envMap := make(map[string]corev1.EnvVar)
 	for _, e := range containers[0].Env {
-		envMap[e.Name] = e.Value
+		envMap[e.Name] = e
 	}
-	if envMap["RECONCILE_INTERVAL"] != "30s" {
-		t.Errorf("RECONCILE_INTERVAL = %q, want %q", envMap["RECONCILE_INTERVAL"], "30s")
+
+	if envMap["RECONCILE_INTERVAL"].Value != "30s" {
+		t.Errorf("RECONCILE_INTERVAL = %q, want %q", envMap["RECONCILE_INTERVAL"].Value, "30s")
 	}
+
+	ghToken, ok := envMap["GITHUB_TOKEN"]
+	if !ok {
+		t.Fatal("GITHUB_TOKEN env var missing from deployment")
+	}
+	if ghToken.ValueFrom == nil || ghToken.ValueFrom.SecretKeyRef == nil {
+		t.Fatal("GITHUB_TOKEN must be sourced from a secret")
+	}
+	if ghToken.ValueFrom.SecretKeyRef.Name != "agentctl-credentials" {
+		t.Errorf("GITHUB_TOKEN secret name = %q, want %q", ghToken.ValueFrom.SecretKeyRef.Name, "agentctl-credentials")
+	}
+	if ghToken.ValueFrom.SecretKeyRef.Key != "GITHUB_TOKEN" {
+		t.Errorf("GITHUB_TOKEN secret key = %q, want %q", ghToken.ValueFrom.SecretKeyRef.Key, "GITHUB_TOKEN")
+	}
+}
+
+func TestInstall_DeploymentRepoArg(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	installer := k8sinternal.NewInstaller(client, "agent-runners")
+
+	if err := installer.Install(context.Background(), testRepo); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("agent-runners").Get(context.Background(), "agentctl-controller", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("deployment not created: %v", err)
+	}
+	args := dep.Spec.Template.Spec.Containers[0].Args
+	for i, a := range args {
+		if a == "--repo" && i+1 < len(args) && args[i+1] == testRepo {
+			return
+		}
+	}
+	t.Errorf("--repo %q not found in container args: %v", testRepo, args)
 }
 
 func TestInstall_DeploymentServiceAccount(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -165,10 +203,10 @@ func TestInstall_Idempotent(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "agent-runners")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("first Install() error = %v", err)
 	}
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("second Install() error = %v", err)
 	}
 }
@@ -177,7 +215,7 @@ func TestInstall_CustomNamespace(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	installer := k8sinternal.NewInstaller(client, "custom-ns")
 
-	if err := installer.Install(context.Background()); err != nil {
+	if err := installer.Install(context.Background(), testRepo); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
 
@@ -197,6 +235,3 @@ func contains(slice []string, s string) bool {
 	}
 	return false
 }
-
-// ensure corev1 import used
-var _ = corev1.Namespace{}
