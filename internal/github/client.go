@@ -43,6 +43,26 @@ func NewClient(token string) *Client {
 	}
 }
 
+func (c *Client) doRaw(ctx context.Context, method, path string, body string) (*http.Response, error) {
+	url := c.baseURL + path
+	var reqBody *strings.Reader
+	if body != "" {
+		reqBody = strings.NewReader(body)
+	} else {
+		reqBody = strings.NewReader("")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return c.http.Do(req)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body string) (*http.Response, error) {
 	url := c.baseURL + path
 	var reqBody *strings.Reader
@@ -173,10 +193,13 @@ func (c *Client) UpdateLabel(ctx context.Context, repo string, number int, add, 
 	_ = resp.Body.Close()
 
 	removePath := fmt.Sprintf("/repos/%s/issues/%d/labels/%s", repo, number, remove)
-	resp, err = c.do(ctx, http.MethodDelete, removePath, "")
+	resp, err = c.doRaw(ctx, http.MethodDelete, removePath, "")
 	if err != nil {
 		return fmt.Errorf("remove label: %w", err)
 	}
 	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("remove label: github API DELETE %s: status %d", removePath, resp.StatusCode)
+	}
 	return nil
 }
