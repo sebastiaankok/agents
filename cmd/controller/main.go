@@ -67,7 +67,12 @@ func reconcile(ctx context.Context, client *k8s.Client, ghClient *github.Client,
 		return err
 	}
 
-	state := buildState(jobs, maxParallel)
+	prStatuses, err := fetchPRStatuses(ctx, ghClient, repo, jobs)
+	if err != nil {
+		return err
+	}
+
+	state := buildState(jobs, prStatuses, maxParallel)
 	actions := controller.Reconcile(state)
 
 	for _, action := range actions {
@@ -87,13 +92,47 @@ func reconcile(ctx context.Context, client *k8s.Client, ghClient *github.Client,
 			if err := ghClient.UpdateLabel(ctx, repo, a.IssueNumber, "failed", "in-progress"); err != nil {
 				return fmt.Errorf("mark failed issue %d: %w", a.IssueNumber, err)
 			}
+		case controller.EnableAutoMerge:
+			log.Printf("enabling auto-merge on PR %d", a.PRNumber)
+			if err := ghClient.EnableAutoMerge(ctx, repo, a.PRNumber); err != nil {
+				return fmt.Errorf("enable auto-merge PR %d: %w", a.PRNumber, err)
+			}
+		case controller.SetDone:
+			log.Printf("setting done on issue %d", a.IssueNumber)
+			if err := ghClient.UpdateLabel(ctx, repo, a.IssueNumber, "done", "waiting-for-review"); err != nil {
+				return fmt.Errorf("set done issue %d: %w", a.IssueNumber, err)
+			}
 		}
 	}
 
 	return nil
 }
 
-func buildState(jobs []batchv1.Job, maxParallel int) controller.State {
+func fetchPRStatuses(ctx context.Context, ghClient *github.Client, repo string, jobs []batchv1.Job) ([]controller.PRStatus, error) {
+	var statuses []controller.PRStatus
+	for _, j := range jobs {
+		issueNum := parseIssueNumber(j.Labels)
+		if issueNum == 0 {
+			continue
+		}
+		branch := fmt.Sprintf("agent/issue-%d", issueNum)
+		pr, ok, err := ghClient.GetPRByBranch(ctx, repo, branch)
+		if err != nil {
+			return nil, fmt.Errorf("get PR for issue %d: %w", issueNum, err)
+		}
+		if !ok {
+			continue
+		}
+		statuses = append(statuses, controller.PRStatus{
+			IssueNumber: issueNum,
+			PRNumber:    pr.Number,
+			Merged:      pr.Merged,
+		})
+	}
+	return statuses, nil
+}
+
+func buildState(jobs []batchv1.Job, prStatuses []controller.PRStatus, maxParallel int) controller.State {
 	var statuses []controller.JobStatus
 	for _, j := range jobs {
 		statuses = append(statuses, controller.JobStatus{
@@ -105,6 +144,7 @@ func buildState(jobs []batchv1.Job, maxParallel int) controller.State {
 	}
 	return controller.State{
 		Jobs:        statuses,
+		PRs:         prStatuses,
 		MaxParallel: maxParallel,
 	}
 }
