@@ -5,11 +5,18 @@ import (
 	"time"
 )
 
+// BlockingIssue represents a GitHub issue referenced by "Blocked by #N".
+type BlockingIssue struct {
+	Number int
+	Closed bool
+}
+
 // JobStatus describes a single Agent Job's current state.
 type JobStatus struct {
-	Name         string
-	CreationTime time.Time
-	Suspended    bool
+	Name           string
+	CreationTime   time.Time
+	Suspended      bool
+	BlockingIssues []BlockingIssue
 }
 
 // State is the input to Reconcile. It contains all observed Jobs and configuration.
@@ -33,9 +40,9 @@ func Reconcile(state State) []Action {
 	var suspended []JobStatus
 
 	for _, j := range state.Jobs {
-		if j.Suspended {
+		if j.Suspended && !jobHasOpenBlocker(j) {
 			suspended = append(suspended, j)
-		} else {
+		} else if !j.Suspended {
 			running++
 		}
 	}
@@ -59,4 +66,14 @@ func Reconcile(state State) []Action {
 	}
 
 	return actions
+}
+
+// jobHasOpenBlocker returns true if any of the job's blocking issues are still open.
+func jobHasOpenBlocker(j JobStatus) bool {
+	for _, b := range j.BlockingIssues {
+		if !b.Closed {
+			return true
+		}
+	}
+	return false
 }

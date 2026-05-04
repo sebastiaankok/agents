@@ -96,6 +96,107 @@ func TestReconcile_MultipleSlotsFree_UnsuspendMultiple(t *testing.T) {
 	}
 }
 
+func TestReconcile_SingleBlockerOpen_StaysSuspended(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "job-a", CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Suspended: false},
+			{Name: "job-b", CreationTime: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), Suspended: true,
+				BlockingIssues: []controller.BlockingIssue{{Number: 99, Closed: false}}},
+		},
+		MaxParallel: 3,
+	}
+	actions := controller.Reconcile(state)
+	if len(actions) != 0 {
+		t.Errorf("Reconcile() returned %d actions, want 0 (blocked by open issue)", len(actions))
+	}
+}
+
+func TestReconcile_SingleBlockerClosed_Eligible(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "job-a", CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Suspended: false},
+			{Name: "job-b", CreationTime: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), Suspended: true,
+				BlockingIssues: []controller.BlockingIssue{{Number: 99, Closed: true}}},
+		},
+		MaxParallel: 3,
+	}
+	actions := controller.Reconcile(state)
+	if len(actions) != 1 {
+		t.Fatalf("Reconcile() returned %d actions, want 1", len(actions))
+	}
+	unsuspend, ok := actions[0].(controller.UnsuspendJob)
+	if !ok {
+		t.Fatalf("action is %T, want UnsuspendJob", actions[0])
+	}
+	if unsuspend.Name != "job-b" {
+		t.Errorf("UnsuspendJob.Name = %q, want %q", unsuspend.Name, "job-b")
+	}
+}
+
+func TestReconcile_MultipleBlockersMixed_StaysSuspended(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "job-a", CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Suspended: false},
+			{Name: "job-b", CreationTime: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), Suspended: true,
+				BlockingIssues: []controller.BlockingIssue{
+					{Number: 1, Closed: true},
+					{Number: 2, Closed: false},
+				}},
+		},
+		MaxParallel: 3,
+	}
+	actions := controller.Reconcile(state)
+	if len(actions) != 0 {
+		t.Errorf("Reconcile() returned %d actions, want 0 (mixed blockers, one open)", len(actions))
+	}
+}
+
+func TestReconcile_AllBlockersClosed_Eligible(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "job-a", CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Suspended: false},
+			{Name: "job-b", CreationTime: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), Suspended: true,
+				BlockingIssues: []controller.BlockingIssue{
+					{Number: 1, Closed: true},
+					{Number: 2, Closed: true},
+				}},
+		},
+		MaxParallel: 3,
+	}
+	actions := controller.Reconcile(state)
+	if len(actions) != 1 {
+		t.Fatalf("Reconcile() returned %d actions, want 1", len(actions))
+	}
+	unsuspend, ok := actions[0].(controller.UnsuspendJob)
+	if !ok {
+		t.Fatalf("action is %T, want UnsuspendJob", actions[0])
+	}
+	if unsuspend.Name != "job-b" {
+		t.Errorf("UnsuspendJob.Name = %q, want %q", unsuspend.Name, "job-b")
+	}
+}
+
+func TestReconcile_NoBlockers_Eligible(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "job-a", CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Suspended: false},
+			{Name: "job-b", CreationTime: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), Suspended: true},
+		},
+		MaxParallel: 3,
+	}
+	actions := controller.Reconcile(state)
+	if len(actions) != 1 {
+		t.Fatalf("Reconcile() returned %d actions, want 1", len(actions))
+	}
+	unsuspend, ok := actions[0].(controller.UnsuspendJob)
+	if !ok {
+		t.Fatalf("action is %T, want UnsuspendJob", actions[0])
+	}
+	if unsuspend.Name != "job-b" {
+		t.Errorf("UnsuspendJob.Name = %q, want %q", unsuspend.Name, "job-b")
+	}
+}
+
 func TestReconcile_MaxParallelOne_UnsuspendOldest(t *testing.T) {
 	state := controller.State{
 		Jobs: []controller.JobStatus{
