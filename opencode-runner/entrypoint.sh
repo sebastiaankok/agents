@@ -6,24 +6,23 @@ set -euo pipefail
 : "${REPO_URL:?REPO_URL must be set}"
 : "${DEFAULT_BRANCH:=main}"
 
-AGENTS_REPO="https://github.com/sebastiaankok/agents"
 BRANCH="agent/issue-${ISSUE_NUMBER}"
 
 export GH_TOKEN="${GITHUB_TOKEN}"
 
+# Authenticate gh CLI before any clones (needed for private repos)
+echo "${GITHUB_TOKEN}" | gh auth login --with-token
+
 # 1. Clone agents skills repo
-git clone --depth=1 "${AGENTS_REPO}" /skills
+gh repo clone sebastiaankok/agents /skills -- --depth=1
 
 # 2. Clone target repo
-git clone "${REPO_URL}" /workspace
+gh repo clone "${REPO_URL}" /workspace --
 cd /workspace
 
 # Configure git identity for commits inside the job
 git config user.email "agent@agentctl"
 git config user.name "agentctl"
-
-# Authenticate gh CLI with the provided token
-echo "${GITHUB_TOKEN}" | gh auth login --with-token
 
 # 3. Create branch
 git checkout -b "${BRANCH}"
