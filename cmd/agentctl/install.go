@@ -34,7 +34,7 @@ func newInstallCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "installed agentctl resources in namespace %q\n", namespace)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "installed agentctl resources in namespace %q\n", namespace)
 			return nil
 		},
 	}
