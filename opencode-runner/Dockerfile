@@ -18,6 +18,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # opencode (sst/opencode) — install latest release
 RUN curl -fsSL https://opencode.ai/install | bash
+ENV PATH="/root/.local/bin:${PATH}"
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
