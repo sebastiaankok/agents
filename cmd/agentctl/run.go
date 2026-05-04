@@ -76,13 +76,13 @@ func newRunCmd(onConfig func(jobspec.Config)) *cobra.Command {
 			}
 
 			if len(issues) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no ready-for-agent issues found")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no ready-for-agent issues found")
 				return nil
 			}
 
 			created, skipped := createJobs(cmd.Context(), cmd.ErrOrStderr(), c, issues, repo, defaultBranch, cfg, flMaxParallel)
 
-			fmt.Fprintf(cmd.OutOrStdout(), "\ncreated %d job(s), skipped %d (already active)\n", created, skipped)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\ncreated %d job(s), skipped %d (already active)\n", created, skipped)
 			return nil
 		},
 	}
@@ -115,14 +115,14 @@ func newK8sClient() (*kubernetes.Clientset, error) {
 
 func validatePrereqs(ctx context.Context, c *k8sinternal.Client, namespace string) error {
 	if err := c.ValidateSecret(ctx, namespace, "agentctl-credentials"); err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n\n", err)
-		fmt.Fprintln(os.Stderr, secretYAMLExample(namespace))
+		_, _ = fmt.Fprintf(os.Stderr, "%s\n\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, secretYAMLExample(namespace))
 		return fmt.Errorf("missing prerequisite: agentctl-credentials Secret")
 	}
 
 	if err := c.ValidateConfigMap(ctx, namespace, jobspec.DefaultConfigMapName); err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n\n", err)
-		fmt.Fprintln(os.Stderr, configMapYAMLExample(namespace))
+		_, _ = fmt.Fprintf(os.Stderr, "%s\n\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, configMapYAMLExample(namespace))
 		return fmt.Errorf("missing prerequisite: %s ConfigMap", jobspec.DefaultConfigMapName)
 	}
 
@@ -226,11 +226,11 @@ func createJobs(ctx context.Context, w interface{ Write([]byte) (int, error) }, 
 	for _, issue := range issues {
 		exists, err := c.JobExists(ctx, cfg.Namespace, issue.Number)
 		if err != nil {
-			fmt.Fprintf(w, "warning: could not check job for issue %d: %v\n", issue.Number, err)
+			_, _ = fmt.Fprintf(w, "warning: could not check job for issue %d: %v\n", issue.Number, err)
 			continue
 		}
 		if exists {
-			fmt.Fprintf(w, "skip issue %d (job already exists)\n", issue.Number)
+			_, _ = fmt.Fprintf(w, "skip issue %d (job already exists)\n", issue.Number)
 			skipped++
 			continue
 		}
@@ -240,11 +240,11 @@ func createJobs(ctx context.Context, w interface{ Write([]byte) (int, error) }, 
 		job := jobspec.Build(issue, repoURL, defaultBranch, jobCfg)
 
 		if err := c.CreateJob(ctx, cfg.Namespace, job); err != nil {
-			fmt.Fprintf(w, "error creating job for issue %d: %v\n", issue.Number, err)
+			_, _ = fmt.Fprintf(w, "error creating job for issue %d: %v\n", issue.Number, err)
 			continue
 		}
 
-		fmt.Fprintf(w, "created job agent-issue-%d for \"%s\"\n", issue.Number, issue.Title)
+		_, _ = fmt.Fprintf(w, "created job agent-issue-%d for \"%s\"\n", issue.Number, issue.Title)
 		created++
 	}
 	return

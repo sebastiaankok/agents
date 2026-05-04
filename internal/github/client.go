@@ -58,7 +58,7 @@ func (c *Client) do(ctx context.Context, method, path string, body string) (*htt
 		return nil, err
 	}
 	if resp.StatusCode >= 400 {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("github API %s %s: status %d", method, path, resp.StatusCode)
 	}
 	return resp, nil
@@ -71,7 +71,7 @@ func (c *Client) GetReadyIssues(ctx context.Context, repo string) ([]Issue, erro
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var issues []Issue
 	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func (c *Client) GetIssue(ctx context.Context, repo string, number int) (Issue, 
 	if err != nil {
 		return Issue{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var issue Issue
 	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
 		return Issue{}, err
@@ -111,13 +111,13 @@ func (c *Client) UpdateLabel(ctx context.Context, repo string, number int, add, 
 	if err != nil {
 		return fmt.Errorf("add label: %w", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	removePath := fmt.Sprintf("/repos/%s/issues/%d/labels/%s", repo, number, remove)
 	resp, err = c.do(ctx, http.MethodDelete, removePath, "")
 	if err != nil {
 		return fmt.Errorf("remove label: %w", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return nil
 }
