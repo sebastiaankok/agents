@@ -59,7 +59,11 @@ func newRunCmd(onConfig func(jobspec.Config)) *cobra.Command {
 				return fmt.Errorf("get default branch: %w", err)
 			}
 
-			gc := github.NewClient("")
+			token, err := resolveGitHubToken()
+			if err != nil {
+				return fmt.Errorf("no GitHub token: %w", err)
+			}
+			gc := github.NewClient(token)
 
 			var issues []github.Issue
 			if flIssue > 0 {
@@ -130,9 +134,9 @@ func validatePrereqs(ctx context.Context, c *k8sinternal.Client, namespace strin
 }
 
 func secretYAMLExample(namespace string) string {
-	return fmt.Sprintf(`# Create the credentials Secret:
+	return fmt.Sprintf(`# Create the credentials Secret (uses your active gh auth token):
 kubectl create secret generic agentctl-credentials \
-  --from-literal=GITHUB_TOKEN=<your-token> \
+  --from-literal=GITHUB_TOKEN=$(gh auth token) \
   -n %s
 
 # Or apply this YAML:
@@ -202,6 +206,21 @@ data:
         }
       ]
     }`, namespace, namespace, namespace)
+}
+
+func resolveGitHubToken() (string, error) {
+	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
+		return t, nil
+	}
+	out, err := exec.Command("gh", "auth", "token").Output()
+	if err != nil {
+		return "", fmt.Errorf("GITHUB_TOKEN not set and 'gh auth token' failed: %w", err)
+	}
+	t := strings.TrimSpace(string(out))
+	if t == "" {
+		return "", fmt.Errorf("GITHUB_TOKEN not set and 'gh auth token' returned empty")
+	}
+	return t, nil
 }
 
 func defaultBranch() (string, error) {
