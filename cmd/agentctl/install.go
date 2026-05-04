@@ -11,11 +11,16 @@ import (
 
 func newInstallCmd() *cobra.Command {
 	var namespace string
+	var repo string
 
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Bootstrap agentctl Kubernetes resources",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if repo == "" {
+				return fmt.Errorf("--repo is required")
+			}
+
 			cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 				clientcmd.NewDefaultClientConfigLoadingRules(),
 				&clientcmd.ConfigOverrides{},
@@ -30,7 +35,7 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			installer := k8sinternal.NewInstaller(client, namespace)
-			if err := installer.Install(cmd.Context()); err != nil {
+			if err := installer.Install(cmd.Context(), repo); err != nil {
 				return err
 			}
 
@@ -40,5 +45,6 @@ func newInstallCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&namespace, "namespace", "agent-runners", "target namespace")
+	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository in owner/name format (required)")
 	return cmd
 }

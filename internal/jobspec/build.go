@@ -47,6 +47,7 @@ func Build(issue github.Issue, repoURL, defaultBranch string, cfg Config) *batch
 			Name:      fmt.Sprintf("agent-issue-%d", issue.Number),
 			Namespace: cfg.Namespace,
 			Labels: map[string]string{
+				"app":          "agent-job",
 				"issue-number": fmt.Sprintf("%d", issue.Number),
 			},
 			Annotations: map[string]string{

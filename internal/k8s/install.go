@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	controllerName  = "agentctl-controller"
-	controllerImage = "ghcr.io/sebastiaankok/agents/controller:latest"
+	controllerName       = "agentctl-controller"
+	controllerImage      = "ghcr.io/sebastiaankok/agents/controller:latest"
+	credentialsSecret    = "agentctl-credentials"
 )
 
 type Installer struct {
@@ -26,7 +27,7 @@ func NewInstaller(client kubernetes.Interface, namespace string) *Installer {
 	return &Installer{client: client, namespace: namespace}
 }
 
-func (i *Installer) Install(ctx context.Context) error {
+func (i *Installer) Install(ctx context.Context, repo string) error {
 	if err := i.applyNamespace(ctx); err != nil {
 		return fmt.Errorf("namespace: %w", err)
 	}
@@ -39,7 +40,7 @@ func (i *Installer) Install(ctx context.Context) error {
 	if err := i.applyClusterRoleBinding(ctx); err != nil {
 		return fmt.Errorf("cluster role binding: %w", err)
 	}
-	if err := i.applyDeployment(ctx); err != nil {
+	if err := i.applyDeployment(ctx, repo); err != nil {
 		return fmt.Errorf("deployment: %w", err)
 	}
 	return nil
@@ -109,7 +110,7 @@ func (i *Installer) applyClusterRoleBinding(ctx context.Context) error {
 	return err
 }
 
-func (i *Installer) applyDeployment(ctx context.Context) error {
+func (i *Installer) applyDeployment(ctx context.Context, repo string) error {
 	replicas := int32(1)
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: controllerName, Namespace: i.namespace},
@@ -126,8 +127,18 @@ func (i *Installer) applyDeployment(ctx context.Context) error {
 						{
 							Name:  "controller",
 							Image: controllerImage,
+							Args:  []string{"--repo", repo},
 							Env: []corev1.EnvVar{
 								{Name: "RECONCILE_INTERVAL", Value: "30s"},
+								{
+									Name: "GITHUB_TOKEN",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{Name: credentialsSecret},
+											Key:                  "GITHUB_TOKEN",
+										},
+									},
+								},
 							},
 						},
 					},
