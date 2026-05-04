@@ -381,6 +381,75 @@ func TestReconcile_MultipleBlockersMixed_StaysSuspended(t *testing.T) {
 	}
 }
 
+func TestReconcile_RunningJobLabelAlreadyApplied_NoUpdateLabel(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-42", IssueNumber: 42, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseRunning, AppliedIssueLabel: "in-progress"},
+		},
+		MaxParallel: 3,
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if ul, ok := a.(controller.UpdateLabel); ok && ul.IssueNumber == 42 {
+			t.Errorf("unexpected UpdateLabel for issue 42 when in-progress already applied")
+		}
+	}
+}
+
+func TestReconcile_SucceededJobLabelAlreadyApplied_NoUpdateLabel(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-7", IssueNumber: 7, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSucceeded, AppliedIssueLabel: "waiting-for-review"},
+		},
+		MaxParallel: 3,
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if ul, ok := a.(controller.UpdateLabel); ok && ul.IssueNumber == 7 {
+			t.Errorf("unexpected UpdateLabel for issue 7 when waiting-for-review already applied")
+		}
+	}
+}
+
+func TestReconcile_FailedJobLabelAlreadyApplied_NoMarkFailed(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-5", IssueNumber: 5, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseFailed, AppliedIssueLabel: "failed"},
+		},
+		MaxParallel: 3,
+	}
+
+	actions := controller.Reconcile(state)
+
+	if len(actions) != 0 {
+		t.Errorf("Reconcile() returned %d actions, want 0 (failed label already applied): %v", len(actions), actions)
+	}
+}
+
+func TestReconcile_MergedPRJobDoneAlreadyApplied_NoSetDone(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-7", IssueNumber: 7, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSucceeded, AppliedIssueLabel: "done"},
+		},
+		MaxParallel: 3,
+		PRs: []controller.PRStatus{
+			{IssueNumber: 7, PRNumber: 42, Merged: true},
+		},
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if _, ok := a.(controller.SetDone); ok {
+			t.Errorf("unexpected SetDone when done label already applied")
+		}
+	}
+}
+
 func TestReconcile_AllBlockersClosed_Eligible(t *testing.T) {
 	state := controller.State{
 		Jobs: []controller.JobStatus{
