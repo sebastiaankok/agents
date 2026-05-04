@@ -15,19 +15,27 @@ const (
 	PhaseFailed    Phase = "Failed"
 )
 
+// IssueState holds the open/closed status of a blocking GitHub issue.
+type IssueState struct {
+	Number int
+	Open   bool
+}
+
 // JobStatus describes a single Agent Job's current state.
 type JobStatus struct {
 	Name         string
 	IssueNumber  int
 	CreationTime time.Time
 	Phase        Phase
+	BlockedBy    []int // issue numbers from "Blocked by #N" lines
 }
 
 // State is the input to Reconcile. It contains all observed Jobs, PRs, and configuration.
 type State struct {
-	Jobs        []JobStatus
-	PRs         []PRStatus
-	MaxParallel int
+	Jobs           []JobStatus
+	PRs            []PRStatus
+	MaxParallel    int
+	BlockingIssues []IssueState // open/closed status for all issues referenced in BlockedBy fields
 }
 
 // Action represents a decision made by Reconcile.
@@ -116,21 +124,42 @@ func Reconcile(state State) []Action {
 		}
 	}
 
+	openIssues := make(map[int]bool, len(state.BlockingIssues))
+	for _, s := range state.BlockingIssues {
+		if s.Open {
+			openIssues[s.Number] = true
+		}
+	}
+
+	var eligible []JobStatus
+	for _, j := range suspended {
+		blocked := false
+		for _, n := range j.BlockedBy {
+			if openIssues[n] {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			eligible = append(eligible, j)
+		}
+	}
+
 	slotsFree := state.MaxParallel - running
-	if slotsFree <= 0 || len(suspended) == 0 {
+	if slotsFree <= 0 || len(eligible) == 0 {
 		return actions
 	}
 
-	sort.Slice(suspended, func(i, j int) bool {
-		return suspended[i].CreationTime.Before(suspended[j].CreationTime)
+	sort.Slice(eligible, func(i, j int) bool {
+		return eligible[i].CreationTime.Before(eligible[j].CreationTime)
 	})
 
-	if slotsFree > len(suspended) {
-		slotsFree = len(suspended)
+	if slotsFree > len(eligible) {
+		slotsFree = len(eligible)
 	}
 
 	for i := 0; i < slotsFree; i++ {
-		actions = append(actions, UnsuspendJob{Name: suspended[i].Name})
+		actions = append(actions, UnsuspendJob{Name: eligible[i].Name})
 	}
 
 	return actions

@@ -319,3 +319,89 @@ func TestReconcile_SucceededJobWithPR_EmitsEnableAutoMerge(t *testing.T) {
 		t.Error("expected EnableAutoMerge action, got none")
 	}
 }
+
+func TestReconcile_SingleBlockerOpen_StaysSuspended(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-20", IssueNumber: 20, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSuspended, BlockedBy: []int{5}},
+		},
+		MaxParallel:    3,
+		BlockingIssues: []controller.IssueState{{Number: 5, Open: true}},
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if _, ok := a.(controller.UnsuspendJob); ok {
+			t.Errorf("expected no UnsuspendJob while blocker #5 is open")
+		}
+	}
+}
+
+func TestReconcile_SingleBlockerClosed_Eligible(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-21", IssueNumber: 21, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSuspended, BlockedBy: []int{5}},
+		},
+		MaxParallel:    3,
+		BlockingIssues: []controller.IssueState{{Number: 5, Open: false}},
+	}
+
+	actions := controller.Reconcile(state)
+
+	var found bool
+	for _, a := range actions {
+		if u, ok := a.(controller.UnsuspendJob); ok && u.Name == "agent-issue-21" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected UnsuspendJob for agent-issue-21 when blocker #5 is closed")
+	}
+}
+
+func TestReconcile_MultipleBlockersMixed_StaysSuspended(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-22", IssueNumber: 22, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSuspended, BlockedBy: []int{5, 6}},
+		},
+		MaxParallel: 3,
+		BlockingIssues: []controller.IssueState{
+			{Number: 5, Open: false},
+			{Number: 6, Open: true},
+		},
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if _, ok := a.(controller.UnsuspendJob); ok {
+			t.Errorf("expected no UnsuspendJob while blocker #6 is still open")
+		}
+	}
+}
+
+func TestReconcile_AllBlockersClosed_Eligible(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-23", IssueNumber: 23, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSuspended, BlockedBy: []int{5, 6}},
+		},
+		MaxParallel: 3,
+		BlockingIssues: []controller.IssueState{
+			{Number: 5, Open: false},
+			{Number: 6, Open: false},
+		},
+	}
+
+	actions := controller.Reconcile(state)
+
+	var found bool
+	for _, a := range actions {
+		if u, ok := a.(controller.UnsuspendJob); ok && u.Name == "agent-issue-23" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected UnsuspendJob for agent-issue-23 when all blockers closed")
+	}
+}
