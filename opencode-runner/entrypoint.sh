@@ -10,9 +10,6 @@ BRANCH="agent/issue-${ISSUE_NUMBER}"
 
 export GH_TOKEN="${GITHUB_TOKEN}"
 
-# Authenticate gh CLI before any clones (needed for private repos)
-echo "${GITHUB_TOKEN}" | gh auth login --with-token
-
 # 1. Clone agents skills repo
 gh repo clone sebastiaankok/agents /skills -- --depth=1
 
