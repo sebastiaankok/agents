@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
+    bash \
     && rm -rf /var/lib/apt/lists/*
 
 # gh CLI
@@ -16,7 +17,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && rm -rf /var/lib/apt/lists/*
 
 # opencode (sst/opencode) — install latest release
-RUN curl -fsSL https://opencode.ai/install | sh
+RUN curl -fsSL https://opencode.ai/install | bash
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
