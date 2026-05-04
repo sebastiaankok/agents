@@ -2,6 +2,7 @@ package jobspec
 
 import (
 	"fmt"
+	"strconv"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -24,6 +25,7 @@ type Config struct {
 	ConfigMapName      string
 	ServiceAccountName string
 	Namespace          string
+	MaxParallel        int
 }
 
 // Build returns a suspended Kubernetes Job spec for the given issue.
@@ -44,7 +46,12 @@ func Build(issue github.Issue, repoURL, defaultBranch string, cfg Config) *batch
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("agent-issue-%d", issue.Number),
 			Namespace: cfg.Namespace,
-			Labels:    map[string]string{"issue-number": fmt.Sprintf("%d", issue.Number)},
+			Labels: map[string]string{
+				"issue-number": fmt.Sprintf("%d", issue.Number),
+			},
+			Annotations: map[string]string{
+				"agentctl.max-parallel": strconv.Itoa(cfg.MaxParallel),
+			},
 		},
 		Spec: batchv1.JobSpec{
 			Suspend:                 &suspend,

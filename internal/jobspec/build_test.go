@@ -154,5 +154,23 @@ func TestBuild_Namespace(t *testing.T) {
 	}
 }
 
+func TestBuild_MaxParallelAnnotation(t *testing.T) {
+	c := cfg()
+	c.MaxParallel = 5
+	job := jobspec.Build(issue(1), "https://github.com/org/repo", "main", c)
+	got := job.Annotations["agentctl.max-parallel"]
+	if got != "5" {
+		t.Errorf("annotation agentctl.max-parallel = %q, want %q", got, "5")
+	}
+}
+
+func TestBuild_MaxParallelDefault(t *testing.T) {
+	job := jobspec.Build(issue(1), "https://github.com/org/repo", "main", cfg())
+	got := job.Annotations["agentctl.max-parallel"]
+	if got != "0" {
+		t.Errorf("annotation agentctl.max-parallel = %q, want %q (zero value)", got, "0")
+	}
+}
+
 // keep compiler happy
 var _ = fmt.Sprintf
