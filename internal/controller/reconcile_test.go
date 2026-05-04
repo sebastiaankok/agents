@@ -233,3 +233,89 @@ func TestReconcile_RunningJob_EmitsUpdateLabel(t *testing.T) {
 		t.Errorf("UpdateLabel.Remove = %q, want %q", ul.Remove, "ready-for-agent")
 	}
 }
+
+func TestReconcile_MergedPR_EmitsSetDone(t *testing.T) {
+	state := controller.State{
+		Jobs:        nil,
+		MaxParallel: 3,
+		PRs: []controller.PRStatus{
+			{IssueNumber: 7, PRNumber: 42, Merged: true},
+		},
+	}
+
+	actions := controller.Reconcile(state)
+
+	if len(actions) != 1 {
+		t.Fatalf("Reconcile() returned %d actions, want 1", len(actions))
+	}
+	sd, ok := actions[0].(controller.SetDone)
+	if !ok {
+		t.Fatalf("action is %T, want SetDone", actions[0])
+	}
+	if sd.IssueNumber != 7 {
+		t.Errorf("SetDone.IssueNumber = %d, want 7", sd.IssueNumber)
+	}
+}
+
+func TestReconcile_OpenPR_NoSetDone(t *testing.T) {
+	state := controller.State{
+		Jobs:        nil,
+		MaxParallel: 3,
+		PRs: []controller.PRStatus{
+			{IssueNumber: 8, PRNumber: 43, Merged: false},
+		},
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if _, ok := a.(controller.SetDone); ok {
+			t.Errorf("unexpected SetDone action for open PR")
+		}
+	}
+}
+
+func TestReconcile_NoPREntry_NoSetDone(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-9", IssueNumber: 9, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSucceeded},
+		},
+		MaxParallel: 3,
+		PRs:         nil,
+	}
+
+	actions := controller.Reconcile(state)
+
+	for _, a := range actions {
+		if _, ok := a.(controller.SetDone); ok {
+			t.Errorf("unexpected SetDone action when no PR entry")
+		}
+	}
+}
+
+func TestReconcile_SucceededJobWithPR_EmitsEnableAutoMerge(t *testing.T) {
+	state := controller.State{
+		Jobs: []controller.JobStatus{
+			{Name: "agent-issue-5", IssueNumber: 5, CreationTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), Phase: controller.PhaseSucceeded},
+		},
+		MaxParallel: 3,
+		PRs: []controller.PRStatus{
+			{IssueNumber: 5, PRNumber: 99, Merged: false},
+		},
+	}
+
+	actions := controller.Reconcile(state)
+
+	var foundAutoMerge bool
+	for _, a := range actions {
+		if eam, ok := a.(controller.EnableAutoMerge); ok {
+			foundAutoMerge = true
+			if eam.PRNumber != 99 {
+				t.Errorf("EnableAutoMerge.PRNumber = %d, want 99", eam.PRNumber)
+			}
+		}
+	}
+	if !foundAutoMerge {
+		t.Error("expected EnableAutoMerge action, got none")
+	}
+}

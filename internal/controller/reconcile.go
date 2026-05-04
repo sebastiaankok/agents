@@ -23,9 +23,10 @@ type JobStatus struct {
 	Phase        Phase
 }
 
-// State is the input to Reconcile. It contains all observed Jobs and configuration.
+// State is the input to Reconcile. It contains all observed Jobs, PRs, and configuration.
 type State struct {
 	Jobs        []JobStatus
+	PRs         []PRStatus
 	MaxParallel int
 }
 
@@ -49,12 +50,34 @@ type MarkFailed struct {
 	IssueNumber int
 }
 
+// EnableAutoMerge instructs the controller to enable squash auto-merge on a PR.
+type EnableAutoMerge struct {
+	PRNumber int
+}
+
+// SetDone instructs the controller to move a GitHub Issue to done state.
+type SetDone struct {
+	IssueNumber int
+}
+
+// PRStatus describes the observed state of a pull request associated with an issue.
+type PRStatus struct {
+	IssueNumber int
+	PRNumber    int
+	Merged      bool
+}
+
 // Reconcile inspects current Job states and returns a list of actions.
 // It is a pure function — no k8s or GitHub API calls.
 func Reconcile(state State) []Action {
 	running := 0
 	var suspended []JobStatus
 	var actions []Action
+
+	prByIssue := make(map[int]PRStatus, len(state.PRs))
+	for _, pr := range state.PRs {
+		prByIssue[pr.IssueNumber] = pr
+	}
 
 	for _, j := range state.Jobs {
 		switch j.Phase {
@@ -76,11 +99,20 @@ func Reconcile(state State) []Action {
 					Add:         "waiting-for-review",
 					Remove:      "in-progress",
 				})
+				if pr, ok := prByIssue[j.IssueNumber]; ok && !pr.Merged {
+					actions = append(actions, EnableAutoMerge{PRNumber: pr.PRNumber})
+				}
 			}
 		case PhaseFailed:
 			if j.IssueNumber != 0 {
 				actions = append(actions, MarkFailed{IssueNumber: j.IssueNumber})
 			}
+		}
+	}
+
+	for _, pr := range state.PRs {
+		if pr.Merged {
+			actions = append(actions, SetDone{IssueNumber: pr.IssueNumber})
 		}
 	}
 

@@ -91,6 +91,80 @@ func TestIsIssueClosed(t *testing.T) {
 	}
 }
 
+func TestGetPRByBranch_Found(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/pulls" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("head") != "owner:agent/issue-7" {
+			t.Errorf("unexpected head param: %s", r.URL.Query().Get("head"))
+		}
+		if r.URL.Query().Get("state") != "open" {
+			t.Errorf("unexpected state param: %s", r.URL.Query().Get("state"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"number":42,"node_id":"PR_node42","merged":false}]`))
+	})
+
+	c, _ := newTestClient(t, handler)
+	pr, ok, err := c.GetPRByBranch(context.Background(), "owner/repo", "agent/issue-7")
+	if err != nil {
+		t.Fatalf("GetPRByBranch() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetPRByBranch() ok = false, want true")
+	}
+	if pr.Number != 42 {
+		t.Errorf("PR.Number = %d, want 42", pr.Number)
+	}
+	if pr.NodeID != "PR_node42" {
+		t.Errorf("PR.NodeID = %q, want %q", pr.NodeID, "PR_node42")
+	}
+}
+
+func TestGetPRByBranch_NotFound(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	})
+
+	c, _ := newTestClient(t, handler)
+	_, ok, err := c.GetPRByBranch(context.Background(), "owner/repo", "agent/issue-99")
+	if err != nil {
+		t.Fatalf("GetPRByBranch() error = %v", err)
+	}
+	if ok {
+		t.Error("GetPRByBranch() ok = true, want false for empty result")
+	}
+}
+
+func TestEnableAutoMerge(t *testing.T) {
+	var graphqlCalled bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/owner/repo/pulls/42":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"number":42,"node_id":"PR_node42","merged":false}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+			graphqlCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"enablePullRequestAutoMerge":{"pullRequest":{"id":"PR_node42"}}}}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	c, _ := newTestClient(t, handler)
+	err := c.EnableAutoMerge(context.Background(), "owner/repo", 42)
+	if err != nil {
+		t.Fatalf("EnableAutoMerge() error = %v", err)
+	}
+	if !graphqlCalled {
+		t.Error("GraphQL endpoint not called")
+	}
+}
+
 func TestUpdateLabel(t *testing.T) {
 	var addCalled, removeCalled bool
 
