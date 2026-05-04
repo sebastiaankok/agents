@@ -23,11 +23,12 @@ type IssueState struct {
 
 // JobStatus describes a single Agent Job's current state.
 type JobStatus struct {
-	Name         string
-	IssueNumber  int
-	CreationTime time.Time
-	Phase        Phase
-	BlockedBy    []int // issue numbers from "Blocked by #N" lines
+	Name               string
+	IssueNumber        int
+	CreationTime       time.Time
+	Phase              Phase
+	BlockedBy          []int  // issue numbers from "Blocked by #N" lines
+	AppliedIssueLabel  string // value of agents.io/issue-label annotation; guards label-transition idempotency
 }
 
 // State is the input to Reconcile. It contains all observed Jobs, PRs, and configuration.
@@ -93,7 +94,7 @@ func Reconcile(state State) []Action {
 			suspended = append(suspended, j)
 		case PhaseRunning:
 			running++
-			if j.IssueNumber != 0 {
+			if j.IssueNumber != 0 && j.AppliedIssueLabel != "in-progress" {
 				actions = append(actions, UpdateLabel{
 					IssueNumber: j.IssueNumber,
 					Add:         "in-progress",
@@ -102,25 +103,36 @@ func Reconcile(state State) []Action {
 			}
 		case PhaseSucceeded:
 			if j.IssueNumber != 0 {
-				actions = append(actions, UpdateLabel{
-					IssueNumber: j.IssueNumber,
-					Add:         "waiting-for-review",
-					Remove:      "in-progress",
-				})
+				if j.AppliedIssueLabel != "waiting-for-review" {
+					actions = append(actions, UpdateLabel{
+						IssueNumber: j.IssueNumber,
+						Add:         "waiting-for-review",
+						Remove:      "in-progress",
+					})
+				}
 				if pr, ok := prByIssue[j.IssueNumber]; ok && !pr.Merged {
 					actions = append(actions, EnableAutoMerge{PRNumber: pr.PRNumber})
 				}
 			}
 		case PhaseFailed:
-			if j.IssueNumber != 0 {
+			if j.IssueNumber != 0 && j.AppliedIssueLabel != "failed" {
 				actions = append(actions, MarkFailed{IssueNumber: j.IssueNumber})
 			}
 		}
 	}
 
+	jobByIssue := make(map[int]JobStatus, len(state.Jobs))
+	for _, j := range state.Jobs {
+		if j.IssueNumber != 0 {
+			jobByIssue[j.IssueNumber] = j
+		}
+	}
+
 	for _, pr := range state.PRs {
 		if pr.Merged {
-			actions = append(actions, SetDone{IssueNumber: pr.IssueNumber})
+			if j, ok := jobByIssue[pr.IssueNumber]; !ok || j.AppliedIssueLabel != "done" {
+				actions = append(actions, SetDone{IssueNumber: pr.IssueNumber})
+			}
 		}
 	}
 

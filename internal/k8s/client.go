@@ -59,6 +59,20 @@ func (c *Client) UnsuspendJob(ctx context.Context, namespace, name string) error
 	return err
 }
 
+// SetJobAnnotation updates a single annotation on the named Job.
+func (c *Client) SetJobAnnotation(ctx context.Context, namespace, name, key, value string) error {
+	job, err := c.kube.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if job.Annotations == nil {
+		job.Annotations = make(map[string]string)
+	}
+	job.Annotations[key] = value
+	_, err = c.kube.BatchV1().Jobs(namespace).Update(ctx, job, metav1.UpdateOptions{})
+	return err
+}
+
 // ValidateSecret returns an error if the named Secret does not exist in namespace.
 func (c *Client) ValidateSecret(ctx context.Context, namespace, name string) error {
 	_, err := c.kube.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})

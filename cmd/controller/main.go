@@ -75,6 +75,13 @@ func reconcile(ctx context.Context, client *k8s.Client, ghClient *github.Client,
 	state := buildState(jobs, prStatuses, maxParallel)
 	actions := controller.Reconcile(state)
 
+	jobNameByIssue := make(map[int]string, len(jobs))
+	for _, j := range jobs {
+		if n := parseIssueNumber(j.Labels); n != 0 {
+			jobNameByIssue[n] = j.Name
+		}
+	}
+
 	for _, action := range actions {
 		switch a := action.(type) {
 		case controller.UnsuspendJob:
@@ -87,10 +94,20 @@ func reconcile(ctx context.Context, client *k8s.Client, ghClient *github.Client,
 			if err := ghClient.UpdateLabel(ctx, repo, a.IssueNumber, a.Add, a.Remove); err != nil {
 				return fmt.Errorf("update label issue %d: %w", a.IssueNumber, err)
 			}
+			if jobName := jobNameByIssue[a.IssueNumber]; jobName != "" {
+				if err := client.SetJobAnnotation(ctx, namespace, jobName, "agents.io/issue-label", a.Add); err != nil {
+					return fmt.Errorf("annotate job %s: %w", jobName, err)
+				}
+			}
 		case controller.MarkFailed:
 			log.Printf("marking issue %d as failed", a.IssueNumber)
 			if err := ghClient.UpdateLabel(ctx, repo, a.IssueNumber, "failed", "in-progress"); err != nil {
 				return fmt.Errorf("mark failed issue %d: %w", a.IssueNumber, err)
+			}
+			if jobName := jobNameByIssue[a.IssueNumber]; jobName != "" {
+				if err := client.SetJobAnnotation(ctx, namespace, jobName, "agents.io/issue-label", "failed"); err != nil {
+					return fmt.Errorf("annotate job %s: %w", jobName, err)
+				}
 			}
 		case controller.EnableAutoMerge:
 			log.Printf("enabling auto-merge on PR %d", a.PRNumber)
@@ -101,6 +118,11 @@ func reconcile(ctx context.Context, client *k8s.Client, ghClient *github.Client,
 			log.Printf("setting done on issue %d", a.IssueNumber)
 			if err := ghClient.UpdateLabel(ctx, repo, a.IssueNumber, "done", "waiting-for-review"); err != nil {
 				return fmt.Errorf("set done issue %d: %w", a.IssueNumber, err)
+			}
+			if jobName := jobNameByIssue[a.IssueNumber]; jobName != "" {
+				if err := client.SetJobAnnotation(ctx, namespace, jobName, "agents.io/issue-label", "done"); err != nil {
+					return fmt.Errorf("annotate job %s: %w", jobName, err)
+				}
 			}
 		}
 	}
@@ -136,10 +158,11 @@ func buildState(jobs []batchv1.Job, prStatuses []controller.PRStatus, maxParalle
 	var statuses []controller.JobStatus
 	for _, j := range jobs {
 		statuses = append(statuses, controller.JobStatus{
-			Name:         j.Name,
-			IssueNumber:  parseIssueNumber(j.Labels),
-			CreationTime: j.CreationTimestamp.Time,
-			Phase:        detectPhase(j),
+			Name:              j.Name,
+			IssueNumber:       parseIssueNumber(j.Labels),
+			CreationTime:      j.CreationTimestamp.Time,
+			Phase:             detectPhase(j),
+			AppliedIssueLabel: j.Annotations["agents.io/issue-label"],
 		})
 	}
 	return controller.State{
